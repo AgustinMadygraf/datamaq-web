@@ -43,141 +43,110 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-const DASHBOARD_API_URL = '../datamaq/backend/api/endpoints/dashboard.php';
+    <script type="module">
+import ApiService from './js/services/ApiService.js';
 
-// (Cabecera ya incluida directamente en el HTML)
-fetch(DASHBOARD_API_URL)
-    .then(resp => resp.json())
-    .then(data => {
+// Estado global simple (legacy, para compatibilidad)
+let appState = {
+    periodo: null,
+    data: null
+};
+
+// Renderiza la botonera y la info principal y recarga el gráfico
+function renderDashboard(data) {
+    if (!data) return;
+    appState.periodo = data.periodo;
+    appState.data = data;
+    const botonera = renderBotonera(data);
+    const info = renderInfoDisplay(data);
+    document.getElementById('info-display-container').innerHTML = botonera + info;
+    // Recargar el gráfico si ChartController está disponible
+    if (window.ChartController && typeof window.ChartController.reloadChart === 'function') {
+        window.ChartController.reloadChart(data);
+    } else if (window.initChart) {
+        window.initChart();
+    }
+}
+
+// Renderiza la botonera de períodos
+function renderBotonera(data) {
+    const periodos = data.ls_periodos || { semana: 0, turno: 0, hora: 0 };
+    const actual = data.periodo;
+    let html = '<div class="botonera mb-3">';
+    for (const key of Object.keys(periodos)) {
+        html += `<button class="btn ${actual === key ? 'btn-success presado' : 'btn-outline-primary presione'} mx-1" onclick="changePeriodo('${key}')">${key.charAt(0).toUpperCase() + key.slice(1)}</button>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+// Renderiza la info de producción
+function renderInfoDisplay(data) {
+    if (!data) return '';
+    const info = data;
+    return `
+        <div class="cabecera">
+            <div class="row">
+                <div class="col-md-4"><strong>Período:</strong> ${info.periodo || ''}</div>
+                <div class="col-md-4"><strong>Contador:</strong> ${info.conta || ''}</div>
+                <div class="col-md-4"><strong>Velocidad Última:</strong> ${info.vel_ult_calculada || ''}</div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-6"><strong>Formato:</strong> ${(info.formatoData && info.formatoData.formato) || ''}</div>
+                <div class="col-md-6"><strong>Ancho Bobina:</strong> ${(info.formatoData && info.formatoData.ancho_bobina) || ''}</div>
+            </div>
+        </div>
+    `;
+}
+
+// Cambia el período y recarga los datos usando ApiService
+window.changePeriodo = async function(periodo) {
+    if (periodo === appState.periodo) return;
+    document.getElementById('loading-indicator').style.display = '';
+    try {
+        const data = await ApiService.getDashboardData(periodo);
+        document.getElementById('loading-indicator').style.display = 'none';
         if (data.status === 'success') {
             window.initialData = data.data;
-            renderInfoDisplay(window.initialData);
-            // Ahora carga los scripts de la app
-            const mainScript = document.createElement('script');
-            mainScript.type = 'module';
-            mainScript.src = 'js/main.js';
-            document.body.appendChild(mainScript);
-
-            const chartScript = document.createElement('script');
-            chartScript.type = 'module';
-            chartScript.src = 'js/modules/ChartController.js';
-            document.body.appendChild(chartScript);
+            renderDashboard(window.initialData);
         } else {
-            // Mostrar error en el contenedor principal
+            document.getElementById('info-display-container').innerHTML = 'Error al cargar datos.';
+        }
+    } catch (e) {
+        document.getElementById('loading-indicator').style.display = 'none';
+        document.getElementById('info-display-container').innerHTML = 'Error de conexión con la API.';
+    }
+};
+
+// Inicialización principal usando ApiService
+document.getElementById('loading-indicator').style.display = '';
+ApiService.getDashboardData()
+    .then(data => {
+        document.getElementById('loading-indicator').style.display = 'none';
+        if (data.status === 'success') {
+            window.initialData = data.data;
+            renderDashboard(window.initialData);
+            // Ahora carga los scripts de la app solo una vez
+            if (!window._scriptsLoaded) {
+                const mainScript = document.createElement('script');
+                mainScript.type = 'module';
+                mainScript.src = 'js/main.js';
+                document.body.appendChild(mainScript);
+
+                const chartScript = document.createElement('script');
+                chartScript.type = 'module';
+                chartScript.src = 'js/modules/ChartController.js';
+                document.body.appendChild(chartScript);
+                window._scriptsLoaded = true;
+            }
+        } else {
             document.getElementById('info-display-container').innerHTML = 'Error al cargar datos.';
         }
     })
     .catch(() => {
+        document.getElementById('loading-indicator').style.display = 'none';
         document.getElementById('info-display-container').innerHTML = 'Error de conexión con la API.';
     });
-
-    // Estado global simple
-    let appState = {
-        periodo: null,
-        data: null
-    };
-
-    // Renderiza la botonera y la info principal y recarga el gráfico
-    function renderDashboard(data) {
-        if (!data) return;
-        appState.periodo = data.periodo;
-        appState.data = data;
-        const botonera = renderBotonera(data);
-        const info = renderInfoDisplay(data);
-        document.getElementById('info-display-container').innerHTML = botonera + info;
-        // Recargar el gráfico si ChartController está disponible
-        if (window.ChartController && typeof window.ChartController.reloadChart === 'function') {
-            window.ChartController.reloadChart(data);
-        } else if (window.initChart) {
-            // Alternativamente, si tienes una función global initChart
-            window.initChart();
-        }
-    }
-
-    // Renderiza la botonera de períodos
-    function renderBotonera(data) {
-        const periodos = data.ls_periodos || { semana: 0, turno: 0, hora: 0 };
-        const actual = data.periodo;
-        let html = '<div class="botonera mb-3">';
-        for (const key of Object.keys(periodos)) {
-            html += `<button class="btn ${actual === key ? 'btn-success presado' : 'btn-outline-primary presione'} mx-1" onclick="changePeriodo('${key}')">${key.charAt(0).toUpperCase() + key.slice(1)}</button>`;
-        }
-        html += '</div>';
-        return html;
-    }
-
-    // Renderiza la info de producción
-    function renderInfoDisplay(data) {
-        if (!data) return '';
-        const info = data;
-        return `
-            <div class="cabecera">
-                <div class="row">
-                    <div class="col-md-4"><strong>Período:</strong> ${info.periodo || ''}</div>
-                    <div class="col-md-4"><strong>Contador:</strong> ${info.conta || ''}</div>
-                    <div class="col-md-4"><strong>Velocidad Última:</strong> ${info.vel_ult_calculada || ''}</div>
-                </div>
-                <div class="row mt-2">
-                    <div class="col-md-6"><strong>Formato:</strong> ${(info.formatoData && info.formatoData.formato) || ''}</div>
-                    <div class="col-md-6"><strong>Ancho Bobina:</strong> ${(info.formatoData && info.formatoData.ancho_bobina) || ''}</div>
-                </div>
-            </div>
-        `;
-    }
-
-    // Cambia el período y recarga los datos
-    window.changePeriodo = function(periodo) {
-        if (periodo === appState.periodo) return;
-        document.getElementById('loading-indicator').style.display = '';
-        fetch(`${DASHBOARD_API_URL}?periodo=${encodeURIComponent(periodo)}`)
-            .then(resp => resp.json())
-            .then(data => {
-                document.getElementById('loading-indicator').style.display = 'none';
-                if (data.status === 'success') {
-                    window.initialData = data.data;
-                    renderDashboard(window.initialData);
-                    // Aquí podrías recargar el gráfico si es necesario
-                } else {
-                    document.getElementById('info-display-container').innerHTML = 'Error al cargar datos.';
-                }
-            })
-            .catch(() => {
-                document.getElementById('loading-indicator').style.display = 'none';
-                document.getElementById('info-display-container').innerHTML = 'Error de conexión con la API.';
-            });
-    };
-
-    // Inicialización principal
-    document.getElementById('loading-indicator').style.display = '';
-    fetch(DASHBOARD_API_URL)
-        .then(resp => resp.json())
-        .then(data => {
-            document.getElementById('loading-indicator').style.display = 'none';
-            if (data.status === 'success') {
-                window.initialData = data.data;
-                renderDashboard(window.initialData);
-                // Ahora carga los scripts de la app solo una vez
-                if (!window._scriptsLoaded) {
-                    const mainScript = document.createElement('script');
-                    mainScript.type = 'module';
-                    mainScript.src = 'js/main.js';
-                    document.body.appendChild(mainScript);
-
-                    const chartScript = document.createElement('script');
-                    chartScript.type = 'module';
-                    chartScript.src = 'js/modules/ChartController.js';
-                    document.body.appendChild(chartScript);
-                    window._scriptsLoaded = true;
-                }
-            } else {
-                document.getElementById('info-display-container').innerHTML = 'Error al cargar datos.';
-            }
-        })
-        .catch(() => {
-            document.getElementById('loading-indicator').style.display = 'none';
-            document.getElementById('info-display-container').innerHTML = 'Error de conexión con la API.';
-        });
     </script>
 </body>
 </html>
