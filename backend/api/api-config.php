@@ -5,9 +5,7 @@ Path: backend/api/api-config.php
 
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/lib/Database.php';
-require_once __DIR__ . '/lib/url-repository.php';
-
+// Cargar configuración desde env.php
 $config = require __DIR__ . '/env.php';
 
 $response = [
@@ -17,27 +15,41 @@ $response = [
     'code' => null
 ];
 
-try {
-    $db = new Database($config);
-    $repo = new UrlRepository($db);
+if ($config['MODE'] === 'dev') {
+    $response['BASE_URL'] = 'http://localhost/DataMaq/backend/api/';
+} else {
+    try {
+        $mysqli = new mysqli(
+            $config['DB_HOST'],
+            $config['DB_USER'],
+            $config['DB_PASS'],
+            $config['DB_NAME']
+        );
 
-    if ($config['MODE'] === 'dev') {
-        $response['BASE_URL'] = $config['BASE_URL'];
-    } else {
-        $last = $repo->getLast();
-        if ($last && isset($last['url'])) {
-            $response['BASE_URL'] = $last['url'];
+        if ($mysqli->connect_error) {
+            throw new Exception('Error de conexión a la base de datos: ' . $mysqli->connect_error, $mysqli->connect_errno);
+        }
+
+        $result = $mysqli->query("SELECT url FROM urls ORDER BY id DESC LIMIT 1");
+        if (!$result) {
+            throw new Exception('Error en la consulta SQL: ' . $mysqli->error, $mysqli->errno);
+        }
+
+        if ($row = $result->fetch_assoc()) {
+            $response['BASE_URL'] = $row['url'];
         } else {
             throw new Exception('No se encontró la URL de ngrok en la base de datos', 404);
         }
+        $result->free();
+        $mysqli->close();
+    } catch (Exception $e) {
+        error_log('api-config.php: ' . $e->getMessage()); // Log en el servidor
+        $response['status'] = 'error';
+        $response['error'] = $e->getMessage();
+        $response['code'] = $e->getCode();
+        $response['BASE_URL'] = 'http://localhost/DataMaq/backend/api/';
     }
-    $db->close();
-} catch (Exception $e) {
-    error_log('api-config.php: ' . $e->getMessage());
-    $response['status'] = 'error';
-    $response['error'] = $e->getMessage();
-    $response['code'] = $e->getCode();
-    $response['BASE_URL'] = $config['BASE_URL'];
 }
 
 echo json_encode($response);
+?>
