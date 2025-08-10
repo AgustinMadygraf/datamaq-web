@@ -12,23 +12,21 @@ $result = [
 try {
     $configPath = __DIR__ . '/env.php';
     
-    // Verificación en 2 pasos del archivo de configuración
     if (!file_exists($configPath)) {
         throw new RuntimeException("Archivo env.php no encontrado en: $configPath");
     }
     
     $config = require $configPath;
     
-    if (!is_array($config)) {
-        throw new RuntimeException("El archivo env.php debe retornar un array");
-    }
-
-    // Lista de parámetros obligatorios
+    // Convertir todas las claves a minúsculas
+    $config = array_change_key_case($config, CASE_LOWER);
+    
+    // Validar parámetros esenciales
     $requiredKeys = ['db_host', 'db_name', 'db_user'];
     $missingKeys = [];
     
     foreach ($requiredKeys as $key) {
-        if (!array_key_exists($key, $config) || empty($config[$key])) {
+        if (empty($config[$key])) {
             $missingKeys[] = $key;
         }
     }
