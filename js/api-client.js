@@ -1,5 +1,5 @@
 /**
-Path: frontend/js/api-client.js
+Path: js/api-client.js
  */
 
 // Variable global para almacenar el token CSRF

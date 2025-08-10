@@ -1,5 +1,5 @@
 /*
-Path: frontend/js/services/ApiService.js
+Path: js/services/ApiService.js
 Este servicio se encarga de hacer peticiones a la API del backend.
 */
 
@@ -64,12 +64,6 @@ class ApiService {
                     menos_periodo: result.data.menos_periodo,
                     periodo: result.data.periodo
                 });
-                
-                // Mantener compatibilidad con código legacy
-                if (typeof window !== 'undefined') {
-                    window.chartData = appState.getChartData();
-                }
-                
                 console.log("ApiService - Datos del dashboard obtenidos y guardados en estado:", result.data);
             } else {
                 // Registrar error en el estado
@@ -145,32 +139,6 @@ class ApiService {
         }
     }
     
-    /**
-     * Inicializa el estado desde los datos iniciales de la página
-     * Método para facilitar la transición de window.initialData a AppState
-     */
-    static initializeFromWindowData() {
-        try {
-            if (typeof window !== 'undefined' && window.initialData) {
-                console.log("ApiService - Inicializando estado desde window.initialData");
-                appState.setInitialData(window.initialData);
-                return true;
-            }
-            return false;
-        } catch (error) {
-            console.error("ApiService - Error al inicializar desde window.initialData:", error);
-            appState.addError('apiService', error);
-            return false;
-        }
-    }
-}
-
-// Inicializar el estado desde datos existentes en window si existen
-if (typeof document !== 'undefined') {
-    // Ejecutar cuando el DOM esté listo
-    document.addEventListener('DOMContentLoaded', () => {
-        ApiService.initializeFromWindowData();
-    });
 }
 
 export default ApiService;

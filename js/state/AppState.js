@@ -1,13 +1,54 @@
+
 /**
+ * Path: js/state/AppState.js
  * AppState.js - Gestión centralizada del estado de la aplicación
  * Implementa el patrón observable para desacoplar la gestión del estado de los componentes UI
+ *
+ * SHAPE DEL ESTADO (compatible con Redux/Context):
+ * {
+ *   chart: {
+ *     conta: string|null,
+ *     rawdata: Array,
+ *     ls_periodos: Array,
+ *     menos_periodo: string|null,
+ *     periodo: string
+ *   },
+ *   initial: {
+ *     periodo: string,
+ *     conta: string|null,
+ *     csrfToken: string|null
+ *   },
+ *   loading: {
+ *     dashboard: boolean,
+ *     chart: boolean
+ *   },
+ *   errors: Array<{ id: number, source: string, message: string, timestamp: string }>
+ * }
+ *
+ * MÉTODOS PRINCIPALES:
+ * - getState(): Obtiene el estado completo
+ * - get(key): Obtiene una parte específica del estado
+ * - update(key, value, merge): Actualiza una parte del estado
+ * - setChartData(chartData): Actualiza datos del gráfico
+ * - getChartData(): Obtiene datos del gráfico
+ * - setInitialData(initialData): Actualiza datos iniciales
+ * - getInitialData(): Obtiene datos iniciales
+ * - setLoading(key, isLoading): Actualiza estado de carga
+ * - isLoading(): Verifica si algún componente está cargando
+ * - addError(source, error): Registra un error
+ * - clearError(id): Elimina un error
+ * - clearAllErrors(): Elimina todos los errores
+ * - subscribe(key, callback): Suscribe a cambios de estado
+ * - resetState(): Restablece el estado inicial
+ *
+ * Todas las claves y métodos son serializables y desacoplados de la UI.
  */
 
 class AppState {
     constructor() {
         // Estado interno inicial
         this._state = {
-            // Datos del gráfico (anteriormente window.chartData)
+            // Datos del gráfico
             chart: {
                 conta: null,
                 rawdata: [],
@@ -15,7 +56,7 @@ class AppState {
                 menos_periodo: null,
                 periodo: 'semana'
             },
-            // Datos iniciales (anteriormente window.initialData)
+            // Datos iniciales
             initial: {
                 periodo: 'semana',
                 conta: null,
@@ -89,16 +130,21 @@ class AppState {
     }
 
     /**
-     * Establece los datos del gráfico (reemplaza window.chartData)
+     * Establece los datos del gráfico
      * @param {object} chartData - Datos del gráfico
      */
     setChartData(chartData) {
-        if (!chartData) {
-            console.warn("AppState - Intentando establecer datos de gráfico nulos o indefinidos");
+        if (!chartData || typeof chartData !== 'object') {
+            console.warn("AppState - Intentando establecer datos de gráfico inválidos");
             return false;
         }
-
-        console.log("AppState - Actualizando datos del gráfico:", chartData);
+        // Validación opcional de propiedades requeridas
+        const required = ['conta', 'rawdata', 'ls_periodos', 'menos_periodo', 'periodo'];
+        for (const key of required) {
+            if (!(key in chartData)) {
+                console.warn(`AppState - chartData incompleto, falta '${key}'`);
+            }
+        }
         return this.update('chart', chartData);
     }
 
@@ -110,11 +156,14 @@ class AppState {
     }
 
     /**
-     * Establece los datos iniciales (reemplaza window.initialData)
+     * Establece los datos iniciales
      * @param {object} initialData - Datos iniciales
      */
     setInitialData(initialData) {
-        console.log("AppState - Actualizando datos iniciales:", initialData);
+        if (!initialData || typeof initialData !== 'object') {
+            console.warn("AppState - Intentando establecer datos iniciales inválidos");
+            return false;
+        }
         return this.update('initial', initialData);
     }
 

@@ -1,128 +1,71 @@
 /*
-Path: frontend/js/modules/ChartController.js
+Path: js/modules/ChartController.js
 Este script se encarga de generar el gráfico de Highcharts y de manejar el evento de doble click sobre el gráfico.
 */
 
 import { onDbClick } from './DoubleClickHandler.js';
+import HighchartsConfig from './chart/HighchartsConfig.js';
 import ChartDataValidator from './chart/ChartDataValidator.js';
 import SeriesBuilder from './chart/SeriesBuilder.js';
-import HighchartsConfig from './chart/HighchartsConfig.js';
+// El estado se recibirá por argumentos/setters
 
+// Módulos nuevos a crear
+import { waitForElement } from '../utils/DomUtils.js';
+import ChartEventManager from './chart/ChartEventManager.js';
+
+import eventBus from '../utils/EventBus.js';
+import { EVENT_CONTRACT } from '../utils/eventBus.contract.js';
 // Clase principal para manejar el gráfico
 class ChartController {
     constructor() {
-        try {
-            console.log("ChartController - Constructor iniciado");
-            
-            this.chartInitialized = false;
-            this.chartDataReceived = false;
-            this.failedAttempts = 0;
-            this.maxFailedAttempts = 5;
-            
-            // Intentar cargar las dependencias con manejo de errores
-            try {
-                this.validator = new ChartDataValidator();
-                console.log("ChartController - ChartDataValidator inicializado correctamente");
-            } catch (e) {
-                console.error("ChartController - Error al crear ChartDataValidator:", e);
-                // Crear un validador fallback básico
-                this.validator = {
-                    validateChartData: (data) => {
-                        console.warn("ChartController - Usando validador fallback");
-                        return data && data.rawdata && Array.isArray(data.rawdata);
-                    }
-                };
-            }
-            
-            try {
-                this.seriesBuilder = new SeriesBuilder();
-                console.log("ChartController - SeriesBuilder inicializado correctamente");
-            } catch (e) {
-                console.error("ChartController - Error al crear SeriesBuilder:", e);
-                // Crear un builder fallback básico
-                this.seriesBuilder = {
-                    buildSeries: () => {
-                        console.warn("ChartController - Usando builder fallback");
-                        return [];
-                    }
-                };
-            }
+        this.chartInitialized = false;
+        this.chartDataReceived = false;
+        this.failedAttempts = 0;
+        this.maxFailedAttempts = 5;
+        this.chartData = null;
+        this.initialData = null;
+        this.validator = new ChartDataValidator();
+        this.seriesBuilder = new SeriesBuilder();
+        this.eventManager = new ChartEventManager(this);
+        this.initChart = this.initChart.bind(this);
+        this.handleChartClick = this.handleChartClick.bind(this);
+        this.handleChartLoad = this.handleChartLoad.bind(this);
+    }
 
-            // Intentar acceder a window.chartData en el constructor (solo para depuración)
-            try {
-                console.log("ChartController - Estado inicial de window.chartData:", 
-                            window.chartData ? "Definido" : "No definido");
-                
-                if (window.chartData) {
-                    console.log("ChartController - window.chartData ya está disponible en constructor:", 
-                                typeof window.chartData);
-                }
-            } catch (e) {
-                console.error("ChartController - Error al acceder a window.chartData en constructor:", e);
-            }
+    setChartData(chartData) {
+        this.chartData = chartData;
+    }
 
-            // Vincular métodos al contexto de la instancia
-            this.initChart = this.initChart.bind(this);
-            this.logChartDataStatus = this.logChartDataStatus.bind(this);
-            this.setupEventListeners = this.setupEventListeners.bind(this);
-            this.startPeriodicCheck = this.startPeriodicCheck.bind(this);
-            this.handleChartClick = this.handleChartClick.bind(this);
-            this.handleChartLoad = this.handleChartLoad.bind(this);
-            this.forceChartDataLoad = this.forceChartDataLoad.bind(this);
-            
-            console.log("ChartController - Constructor completado exitosamente");
-        } catch (e) {
-            console.error("ChartController - Error fatal en el constructor:", e);
-        }
+    setInitialData(initialData) {
+        this.initialData = initialData;
     }
     
     // Método para forzar la carga de datos del gráfico desde main.js
-    forceChartDataLoad() {
+    async forceChartDataLoad() {
         try {
             console.log("ChartController - Intentando forzar carga de datos desde main.js");
-            
-            // Verificar si el módulo main.js está cargado
-            if (typeof window.initialData !== 'undefined') {
-                console.log("ChartController - initialData encontrado, intentando cargar datos");
-                
-                // Importar dinámicamente ApiService
-                import('../services/ApiService.js')
-                    .then(module => {
-                        const ApiService = module.default;
-                        console.log("ChartController - ApiService importado correctamente");
-                        
-                        // Obtener datos del dashboard
-                        const periodo = window.initialData.periodo || 'semana';
-                        const conta = window.initialData.conta || null;
-                        
-                        return ApiService.getDashboardData(periodo, conta);
-                    })
-                    .then(response => {
-                        if (response.status === 'success') {
-                            console.log("ChartController - Datos recibidos correctamente de API");
-                            
-                            // Actualizar chartData
-                            window.chartData = {
-                                conta: response.data.conta,
-                                rawdata: response.data.rawdata,
-                                ls_periodos: response.data.ls_periodos,
-                                menos_periodo: response.data.menos_periodo,
-                                periodo: response.data.periodo
-                            };
-                            
-                            console.log("ChartController - window.chartData establecido:", window.chartData);
-                            this.initChart();
-                        } else {
-                            throw new Error("Error en la respuesta de la API: " + response.message);
-                        }
-                    })
-                    .catch(err => {
-                        console.error("ChartController - Error al cargar datos:", err);
-                        this.failedAttempts++;
-                    });
-            } else {
+            const initialData = this.initialData;
+            if (!initialData) {
                 console.warn("ChartController - initialData no encontrado");
                 this.failedAttempts++;
+                return;
+            }
+            const ApiService = (await import('../services/ApiService.js')).default;
+            const periodo = initialData.periodo || 'semana';
+            const conta = initialData.conta || null;
+            const response = await ApiService.getDashboardData(periodo, conta);
+            if (response.status === 'success') {
+                console.log("ChartController - Datos recibidos correctamente de API");
+                this.setChartData({
+                    conta: response.data.conta,
+                    rawdata: response.data.rawdata,
+                    ls_periodos: response.data.ls_periodos,
+                    menos_periodo: response.data.menos_periodo,
+                    periodo: response.data.periodo
+                });
+                this.initChart();
+            } else {
+                throw new Error("Error en la respuesta de la API: " + response.message);
             }
         } catch (e) {
             console.error("ChartController - Error en forceChartDataLoad:", e);
@@ -133,31 +76,33 @@ class ChartController {
     // Registra el estado actual de chartData con detalles adicionales
     logChartDataStatus() {
         try {
-            const chartDataExists = typeof window.chartData !== 'undefined';
-            const chartDataType = chartDataExists ? typeof window.chartData : 'undefined';
-            const chartDataIsObject = chartDataExists && typeof window.chartData === 'object';
-            const chartDataIsNull = chartDataExists && window.chartData === null;
-            
+            const chartData = this.chartData;
+            const chartDataExists = chartData !== undefined && chartData !== null;
+            const chartDataType = chartDataExists ? typeof chartData : 'undefined';
+            const chartDataIsObject = chartDataExists && typeof chartData === 'object';
+            const chartDataIsNull = chartDataExists && chartData === null;
+
             console.log("ChartController - Estado detallado de chartData:", {
                 exists: chartDataExists,
                 type: chartDataType,
                 isObject: chartDataIsObject,
                 isNull: chartDataIsNull,
-                value: chartDataExists ? window.chartData : undefined,
+                value: chartDataExists ? chartData : undefined,
                 chartInitialized: this.chartInitialized,
                 dataReceived: this.chartDataReceived,
                 failedAttempts: this.failedAttempts
             });
-            
-            // Inspeccionar contexto global (window)
-            console.log("ChartController - Objetos globales relevantes presentes:", {
-                initialData: typeof window.initialData !== 'undefined',
+
+            // Inspeccionar contexto global y estado centralizado
+            const initialData = this.initialData;
+            console.log("ChartController - Objetos relevantes presentes:", {
+                initialData: initialData !== undefined && initialData !== null,
                 Highcharts: typeof window.Highcharts !== 'undefined',
                 Chart: typeof window.Chart !== 'undefined',
                 jQuery: typeof window.jQuery !== 'undefined',
                 $: typeof window.$ !== 'undefined',
             });
-            
+
             return chartDataExists;
         } catch (e) {
             console.error("ChartController - Error al registrar estado de chartData:", e);
@@ -168,69 +113,37 @@ class ChartController {
     // Método para esperar a que el contenedor esté disponible
     waitForContainer(maxWaitTime = 5000, interval = 200) {
         console.log("ChartController - Esperando a que el contenedor esté disponible");
-        
-        return new Promise((resolve, reject) => {
-            // Si ya está disponible, resolvemos inmediatamente
-            const container = document.getElementById('container');
-            if (container) {
-                console.log("ChartController - Contenedor encontrado inmediatamente");
-                resolve(container);
-                return;
-            }
-            
-            // Variables para la espera
-            const startTime = Date.now();
-            let checkInterval;
-            
-            // Función para verificar el contenedor
-            const checkContainer = () => {
-                const container = document.getElementById('container');
-                
-                if (container) {
-                    clearInterval(checkInterval);
-                    console.log("ChartController - Contenedor encontrado después de esperar");
-                    resolve(container);
-                } else if (Date.now() - startTime > maxWaitTime) {
-                    clearInterval(checkInterval);
-                    console.error(`ChartController - Tiempo de espera agotado después de ${maxWaitTime}ms`);
-                    reject(new Error("Tiempo de espera agotado buscando el contenedor"));
-                }
-            };
-            
-            // Iniciar verificación periódica
-            checkInterval = setInterval(checkContainer, interval);
-        });
+        return waitForElement('container', maxWaitTime, interval);
     }
 
     // Inicializa el gráfico Highcharts con manejo mejorado de errores
     async initChart() {
         try {
             console.log("ChartController - Iniciando initChart()...");
-            const chartDataExists = this.logChartDataStatus();
-            
-            if (!chartDataExists) {
+            const chartData = this.chartData;
+            if (!chartData) {
                 console.error("ChartController - chartData no existe, no se puede inicializar el gráfico");
                 this.failedAttempts++;
                 
                 if (this.failedAttempts >= this.maxFailedAttempts) {
                     console.error("ChartController - Máximo de intentos de inicialización alcanzado");
                 } else {
-                    console.log("ChartController - Intentando forzar carga de datos...");
-                    this.forceChartDataLoad();
+                    console.log("ChartController - Intentando cargar datos...");
+                    this.loadChartData();
                 }
                 return;
             }
 
             // Verificar existencia de Highcharts
             if (typeof window.Highcharts === 'undefined') {
-                console.error("ChartController - Error: Highcharts no está definido. Verificar que la librería está cargada.");
+                console.error("ChartController - Error: Highcharts no está definido.");
                 return;
             }
 
-            // Esperar a que el contenedor esté disponible
+            // Esperar a que el contenedor esté disponible usando la utilidad
             let container;
             try {
-                container = await this.waitForContainer();
+                container = await waitForElement('container');
                 console.log("ChartController - Container obtenido correctamente");
             } catch (containerError) {
                 console.error("ChartController - Error esperando al contenedor:", containerError);
@@ -274,11 +187,11 @@ class ChartController {
                 }
             });
 
-            // Validar los datos
-            if (!this.validator.validateChartData(window.chartData)) {
-                console.error("ChartController - Validación de chartData falló");
-                return;
-            }
+                // Validar los datos usando el estado centralizado
+                if (!this.validator.validateChartData(this.chartData)) {
+                    console.error("ChartController - Validación de chartData falló");
+                    return;
+                }
 
             this.chartDataReceived = true;
 
@@ -338,10 +251,11 @@ class ChartController {
         try {
             console.log("ChartController - Creando gráfico...");
             
-            // Definir las series
+            // Definir las series usando el estado centralizado
+            const chartData = this.chartData;
             let series = [];
             try {
-                series = this.seriesBuilder.buildSeries(window.chartData);
+                series = this.seriesBuilder.buildSeries(chartData);
             } catch (seriesError) {
                 console.error("ChartController - Error al construir series:", seriesError);
                 // Series fallback
@@ -350,14 +264,14 @@ class ChartController {
                     data: [[Date.now(), 0]]
                 }];
             }
-            
+
             let config = {};
             try {
                 // Obtener la configuración del gráfico
                 config = HighchartsConfig.getChartConfig(
-                    window.chartData, 
-                    series, 
-                    this.handleChartClick, 
+                    chartData,
+                    series,
+                    this.handleChartClick,
                     this.handleChartLoad
                 );
             } catch (configError) {
@@ -410,61 +324,51 @@ class ChartController {
         try {
             console.log("ChartController - Configurando event listeners");
             
+
             // Escuchar cuando el DOM esté listo
-            document.addEventListener('DOMContentLoaded', () => {
-                console.log("ChartController - DOMContentLoaded disparado");
+            eventBus.subscribe('appDomReady', () => {
+                console.log("ChartController - Evento appDomReady recibido (event bus)");
                 try {
                     const chartDataExists = this.logChartDataStatus();
-                    
                     if (chartDataExists) {
-                        console.log("ChartController - window.chartData encontrado en DOMContentLoaded, iniciando gráfico");
+                        console.log("ChartController - chartData encontrado en appDomReady, iniciando gráfico");
                         this.initChart();
                     } else {
-                        console.warn("ChartController - window.chartData no encontrado. Esperando evento chartDataReady");
-                        
-                        // Verificar si main.js está cargado
+                        console.warn("ChartController - chartData no encontrado. Esperando evento CHART_DATA_UPDATED");
+                        const initialData = appState.getInitialData();
                         console.log("ChartController - Estado de módulos:", {
-                            "window.initialData": window.initialData !== undefined ? "disponible" : "no disponible"
+                            initialData: initialData !== undefined && initialData !== null ? "disponible" : "no disponible"
                         });
                     }
                 } catch (err) {
-                    console.error("ChartController - Error en el manejador de DOMContentLoaded:", err);
+                    console.error("ChartController - Error en el manejador de appDomReady:", err);
                 }
             });
 
-            // Escuchar el evento chartDataReady
-            document.addEventListener('chartDataReady', (event) => {
-                console.log("ChartController - Evento chartDataReady recibido", event.detail);
-                
+            // Escuchar el evento chartDataReady usando event bus local
+            eventBus.subscribe(EVENT_CONTRACT.CHART_DATA_UPDATED, (payload) => {
+                console.log("ChartController - Evento CHART_DATA_UPDATED recibido", payload);
                 try {
-                    const chartDataExists = this.logChartDataStatus();
-                    
-                    if (!chartDataExists) {
-                        console.error("ChartController - window.chartData sigue indefinido después del evento chartDataReady");
-                        
-                        // Recuperación: intentar obtener datos del evento
-                        if (event.detail && event.detail.chartData) {
-                            console.log("ChartController - Intentando recuperar chartData desde el evento");
-                            window.chartData = event.detail.chartData;
-                        } else {
-                            // Intentar forzar carga
-                            this.forceChartDataLoad();
-                            return;
-                        }
+                    if (payload && payload.chartData) {
+                        this.setChartData(payload.chartData);
                     }
-                    
+                    const chartDataExists = this.logChartDataStatus();
+                    if (!chartDataExists) {
+                        console.error("ChartController - chartData sigue indefinido después del evento CHART_DATA_UPDATED");
+                        this.forceChartDataLoad();
+                        return;
+                    }
                     console.log("ChartController - Iniciando gráfico desde evento chartDataReady");
-                    // Pequeño retraso para asegurar que el DOM está listo
                     setTimeout(this.initChart, 100);
                 } catch (err) {
                     console.error("ChartController - Error en el manejador de chartDataReady:", err);
                 }
             });
-            
+
             // Nueva verificación: Custom event para cuando el container se haga visible
-            document.addEventListener('containerReady', () => {
-                console.log("ChartController - Evento containerReady recibido");
-                if (window.chartData && !this.chartInitialized) {
+            eventBus.subscribe('containerReady', (payload) => {
+                console.log("ChartController - Evento containerReady recibido (event bus)", payload);
+                if (this.chartData && !this.chartInitialized) {
                     setTimeout(this.initChart, 100);
                 }
             });
@@ -487,8 +391,9 @@ class ChartController {
                 console.log(`ChartController - Verificación periódica #${checkAttempts}`);
                 
                 try {
-                    // Verificar si chartData existe
-                    const chartDataExists = typeof window.chartData !== 'undefined' && window.chartData !== null;
+                    // Verificar si chartData existe usando el estado centralizado
+                    const chartData = this.chartData;
+                    const chartDataExists = chartData !== undefined && chartData !== null;
                     
                     // Verificar si el contenedor existe
                     const containerExists = document.getElementById('container') !== null;
@@ -541,19 +446,14 @@ class ChartController {
     }
 
     // Método de inicialización mejorado
-    init() {
+    init(initialData, chartData) {
         try {
             console.log("ChartController - Inicializando...");
-            
-            // Registrar el estado inicial
+            this.setInitialData(initialData);
+            this.setChartData(chartData);
             this.logChartDataStatus();
-            
-            // Configurar event listeners
             this.setupEventListeners();
-            
-            // Iniciar verificación periódica
             this.startPeriodicCheck();
-            
             console.log("ChartController - Inicialización completada");
         } catch (e) {
             console.error("ChartController - Error durante la inicialización:", e);
@@ -561,22 +461,5 @@ class ChartController {
     }
 }
 
-// Crear la instancia del controlador
-let chartController;
-
-// Inicializar el controlador con manejo de errores global
-try {
-    console.log("ChartController - Creando instancia");
-    chartController = new ChartController();
-    chartController.init();
-    console.log("ChartController - Instancia creada e inicializada correctamente");
-} catch (e) {
-    console.error("ChartController - Error fatal al crear o inicializar el controlador:", e);
-    // Crear un controlador fallback
-    chartController = {
-        init: () => console.error("ChartController - Usando controlador fallback")
-    };
-}
-
-// Exportar la instancia creada
-export default chartController;
+// Exportar la clase para que el controlador principal la instancie y pase el estado
+export default ChartController;

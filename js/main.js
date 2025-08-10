@@ -1,9 +1,16 @@
 /*
-Path: frontend/js/main.js
+// Redirigir eventos globales mouseup al event bus
+window.addEventListener('mouseup', (e) => {
+    eventBus.emit('mouseup', e);
+});
+Path: js/main.js
 */
 
 import ApiService from './services/ApiService.js';
 import UiService from './services/UiService.js';
+import appState from './state/AppState.js';
+import eventBus from './utils/EventBus.js';
+import { EVENT_CONTRACT } from './utils/eventBus.contract.js';
 
 console.log("main.js cargado correctamente.");
 
@@ -13,6 +20,7 @@ function hideLoadingIndicator() {
     if (loadingIndicator) {
         loadingIndicator.style.display = 'none';
     }
+    appState.update('loading', { global: false });
 }
 
 // Función para notificar que el contenedor del gráfico está listo
@@ -35,14 +43,12 @@ function notifyContainerReady() {
                 container.style.width = '100%';
             }
             
-            // Disparar evento para notificar que el contenedor está listo
-            document.dispatchEvent(new CustomEvent('containerReady', {
-                detail: { 
-                    containerId: 'container',
-                    timestamp: Date.now()
-                }
-            }));
-            console.log("main.js - Evento containerReady disparado");
+            // Disparar evento para notificar que el contenedor está listo usando event bus
+            eventBus.emit('containerReady', {
+                containerId: 'container',
+                timestamp: Date.now()
+            });
+            console.log("main.js - Evento containerReady disparado (event bus)");
         } else {
             console.warn("main.js - Contenedor del gráfico aún no existe");
             
@@ -66,98 +72,83 @@ function notifyContainerReady() {
             setTimeout(notifyContainerReady, 500);
         }
     } catch (error) {
+        appState.addError('global', error);
         console.error("main.js - Error al notificar que el contenedor está listo:", error);
     }
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
+window.addEventListener("DOMContentLoaded", async () => {
     try {
         console.log("main.js - DOMContentLoaded iniciado");
-        console.log("main.js - Datos iniciales:", window.initialData);
-        
-        // Inicialización segura de window.chartData para evitar problemas de timing
-        if (!window.chartData) {
-            console.log("main.js - Inicializando window.chartData como objeto vacío para evitar errores de referencia");
-            window.chartData = { _placeholder: true };
-        }
-        
-        // Obtener periodo y conta de los datos iniciales
-        const { periodo, conta } = window.initialData;
-        
-        console.log("main.js - Iniciando solicitud de datos a la API...");
-        let response;
+        eventBus.emit('appDomReady', { timestamp: Date.now() });
         try {
             response = await ApiService.getDashboardData(periodo, conta);
         } catch (apiError) {
-            console.error("main.js - Error al obtener datos de la API:", apiError);
+            appState.setLoading('dashboard', false);
+            appState.addError('global', apiError);
             throw new Error("Error de comunicación con la API: " + apiError.message);
         }
-        
+
+        appState.setLoading('dashboard', false);
+
         if (response.status !== 'success') {
+            appState.addError('global', response.message || 'No se recibieron datos');
             throw new Error('Error en la respuesta de la API: ' + (response.message || 'No se recibieron datos'));
         }
-        
+
         const data = response.data;
         console.log("main.js - Datos recibidos:", data);
 
         // Actualizar la interfaz con los datos recibidos
         await UiService.updateDashboard(data);
-        
-        console.log("main.js - Configurando chartData en window...");
-        
-        // Configurar el gráfico con los datos recibidos
-        window.chartData = {
-            conta: data.conta,
-            rawdata: data.rawdata,
-            ls_periodos: data.ls_periodos,
-            menos_periodo: data.menos_periodo,
-            periodo: data.periodo
-        };
-        
-        console.log("main.js - window.chartData configurado:", window.chartData);
-        
+
+        // Guardar los datos del gráfico en el store centralizado
+        if (typeof appState.setChartData === 'function') {
+            appState.setChartData({
+                conta: data.conta,
+                rawdata: data.rawdata,
+                ls_periodos: data.ls_periodos,
+                menos_periodo: data.menos_periodo,
+                periodo: data.periodo
+            });
+        } else {
+            appState.update('chartData', {
+                conta: data.conta,
+                rawdata: data.rawdata,
+                ls_periodos: data.ls_periodos,
+                menos_periodo: data.menos_periodo,
+                periodo: data.periodo
+            });
+        }
+
+        console.log("main.js - chartData configurado en appState:", appState.getState().chartData);
+
         // Notificar que el contenedor está listo (iniciar verificación)
         notifyContainerReady();
-        
-        console.log("main.js - Disparando evento chartDataReady");
-        
-        // Pequeña pausa para asegurarnos que otros procesos están listos
+
+        // Disparar evento para que ChartController sepa que los datos están listos
         setTimeout(() => {
-            // Disparar evento para que ChartController sepa que los datos están listos
             try {
                 const event = new CustomEvent('chartDataReady', { 
                     detail: { 
                         chartDataSource: 'main.js',
                         timestamp: Date.now(),
-                        // Incluir una copia de los datos como respaldo
-                        chartData: {
-                            conta: data.conta,
-                            rawdata: data.rawdata,
-                            ls_periodos: data.ls_periodos,
-                            menos_periodo: data.menos_periodo,
-                            periodo: data.periodo
-                        }
+                        chartData: appState.getState().chartData
                     } 
                 });
                 document.dispatchEvent(event);
                 console.log("main.js - Evento chartDataReady disparado correctamente");
             } catch (eventError) {
                 console.error("main.js - Error al disparar evento chartDataReady:", eventError);
-                
-                // Verificar si chartData está disponible en window
-                if (window.chartData) {
-                    console.log("main.js - Verificación de respaldo: window.chartData está disponible");
-                } else {
-                    console.error("main.js - Verificación de respaldo: window.chartData NO está disponible");
-                }
             }
         }, 200);
-        
+
         console.log("main.js - Elementos actualizados correctamente.");
     } catch (error) {
+        appState.setLoading('dashboard', false);
+        appState.addError('global', error);
         console.error("main.js - Error crítico en la aplicación:", error);
         console.log("main.js - Stack trace:", error.stack);
-        
         // Mostrar mensaje de error al usuario
         const container = document.getElementById('info-display-container');
         if (container) {
@@ -168,22 +159,23 @@ document.addEventListener("DOMContentLoaded", async () => {
             `;
         }
     } finally {
-        // Ocultar indicador de carga
         hideLoadingIndicator();
     }
 });
 
 // Mecanismo de verificación global para chartData
 window.checkChartDataAvailability = function() {
+    const chartData = appState.getState().chartData;
     console.log("Verificación global de chartData:", {
-        exists: typeof window.chartData !== 'undefined',
-        value: window.chartData
+        exists: typeof chartData !== 'undefined',
+        value: chartData
     });
-    return window.chartData;
+    return chartData;
 };
 
 // Añadir manejador de errores global para debugging
 window.addEventListener('error', function(event) {
+    appState.addError('global', event.error || event.message);
     console.error('main.js - Error global capturado:', {
         message: event.message,
         source: event.filename,
