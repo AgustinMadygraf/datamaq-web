@@ -55,7 +55,7 @@ try {
         }
 
         // Consulta segura con manejo de errores
-        $query = "SELECT url FROM ngrok_urls ORDER BY id DESC LIMIT 1";
+        $query = "SELECT url FROM urls ORDER BY id DESC LIMIT 1";
         if ($result = $mysqli->query($query)) {
             if ($row = $result->fetch_assoc()) {
                 $response['BASE_URL'] = $row['url'];
