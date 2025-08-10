@@ -42,20 +42,3 @@ function apiRequest(url, method = 'GET', data = null) {
             return response.json();
         });
 }
-
-/**
- * Función para actualizar datos sin recargar la página
- */
-function refreshData() {
-    apiRequest('/DataMaq/backend/api/endpoints/refresh.php', 'GET')
-        .then(data => {
-            console.log('Datos actualizados');
-            // Aquí se actualizaría la UI con los nuevos datos
-            if (data.success) {
-                // Opcional: mostrar mensaje de éxito
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
-}

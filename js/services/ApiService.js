@@ -7,9 +7,36 @@ import appState from '../state/AppState.js';
 
 class ApiService {
     /**
-     * URL base para las peticiones API
+     * URL base para las peticiones API (se carga dinámicamente)
      */
-    static BASE_URL = '/DataMaq/backend/api';
+    static BASE_URL = null;
+
+    /**
+     * Carga la configuración de la API desde el backend
+     * @returns {Promise<void>}
+     */
+    static async loadConfig() {
+        try {
+            const response = await fetch('backend/api/api-config.php', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            if (!response.ok) {
+                throw new Error(`Error HTTP: ${response.status}`);
+            }
+            const config = await response.json();
+            if (config.BASE_URL) {
+                this.BASE_URL = config.BASE_URL;
+                console.log('ApiService - BASE_URL cargada dinámicamente:', this.BASE_URL);
+            } else {
+                throw new Error('BASE_URL no encontrada en la configuración');
+            }
+        } catch (error) {
+            console.error('Error cargando configuración de la API:', error);
+        }
+    }
     
     /**
      * Obtiene los datos del dashboard desde la API

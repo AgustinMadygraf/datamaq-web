@@ -33,6 +33,9 @@ class DashboardApp {
         const loading = document.getElementById('loading-indicator');
         if (loading) loading.style.display = '';
 
+        // Esperar a que la configuración de la API se cargue antes de continuar
+        await ApiService.loadConfig();
+
         try {
             let result;
             // Solo pasa los parámetros si existen
