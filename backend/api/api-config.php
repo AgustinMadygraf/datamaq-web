@@ -1,4 +1,8 @@
 <?php
+/*
+Path: backend/api/api-config.php
+*/
+
 header('Content-Type: application/json');
 
 // Cargar configuración desde env.php
