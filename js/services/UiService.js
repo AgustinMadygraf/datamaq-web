@@ -263,6 +263,15 @@ class UiService {
             });
         });
     }
+
+    /**
+     * Muestra un mensaje de error en la interfaz
+     * @param {string} message - Mensaje de error a mostrar
+     */
+    static showError(message) {
+        // Puedes personalizar esto para mostrar el error en un modal, toast, etc.
+        alert(`Error: ${message}`);
+    }
 }
 
 export default UiService;

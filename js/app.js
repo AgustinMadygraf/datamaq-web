@@ -36,6 +36,13 @@ class DashboardApp {
         // Esperar a que la configuración de la API se cargue antes de continuar
         await ApiService.loadConfig();
 
+        // Verifica errores después de cargar la configuración
+        const errors = appState.getErrors && appState.getErrors('apiService');
+        if (errors && errors.length > 0) {
+            UiService.showError(errors[errors.length - 1].message || 'Error desconocido');
+            return; // Detiene la inicialización si hay error crítico
+        }
+
         try {
             let result;
             // Solo pasa los parámetros si existen

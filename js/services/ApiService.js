@@ -27,6 +27,13 @@ class ApiService {
                 throw new Error(`Error HTTP: ${response.status}`);
             }
             const config = await response.json();
+
+            if (config.status === 'error') {
+                // Manejo de error estructurado desde el backend
+                console.error(`ApiService.loadConfig - Error: ${config.error} (code: ${config.code})`);
+                throw new Error(config.error || 'Error desconocido en la configuración de la API');
+            }
+
             if (config.BASE_URL) {
                 this.BASE_URL = config.BASE_URL;
                 console.log('ApiService - BASE_URL cargada dinámicamente:', this.BASE_URL);
@@ -35,6 +42,8 @@ class ApiService {
             }
         } catch (error) {
             console.error('Error cargando configuración de la API:', error);
+            // Aquí puedes notificar al usuario o actualizar el estado de error en AppState
+            appState.addError('apiService', error.message);
         }
     }
     
