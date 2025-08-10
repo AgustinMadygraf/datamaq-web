@@ -1,46 +1,60 @@
 <?php
 /*
 Path: backend/api/test.php
-Test de conexión y existencia de tabla 'urls' usando POO.
+Test de conexión y existencia de tabla 'urls' usando POO - Versión Mejorada
 */
 
+declare(strict_types=1);
 header('Content-Type: application/json');
+
+// Resultado estructurado con tipos definidos
 $result = [
-	"db" => false,
-	"table" => false,
-	"lastUrl" => null,
-	"error" => null
-	];
-
-require_once __DIR__ . '/lib/Database.php';
-require_once __DIR__ . '/lib/url-repository.php';
+    "db" => false,
+    "table" => false,
+    "lastUrl" => null,
+    "error" => null
+];
 
 try {
-	$config = require __DIR__ . '/env.php';
-} catch (Exception $e) {
-	$result["error"] = "Error al cargar el archivo de configuración: " . $e->getMessage();
+    // Carga segura de configuración
+    $configPath = __DIR__ . '/env.php';
+    if (!file_exists($configPath)) {
+        throw new RuntimeException("Archivo de configuración no encontrado");
+    }
+    
+    $config = require $configPath;
+    
+    // Validación básica de configuración
+    if (empty($config['db_host']) || empty($config['db_name'])) {
+        throw new RuntimeException("Configuración de BD incompleta");
+    }
+
+    require_once __DIR__ . '/lib/Database.php';
+    require_once __DIR__ . '/lib/url-repository.php';
+
+    $db = new Database($config);
+    $result['db'] = true;  // Conexión exitosa
+
+    $repo = new UrlRepository($db);
+    $last = $repo->getLast();
+    
+    if (!$last || !isset($last['url'])) {
+        throw new RuntimeException("La tabla 'urls' no contiene registros válidos");
+    }
+    
+    $result['table'] = true;
+    $result['lastUrl'] = $last['url'];
+    
+} catch (Throwable $e) {  // Captura cualquier error/exception
+    $result['error'] = "Error en prueba de sistema: " . $e->getMessage();
+    // Log detallado para producción (descomentar en entorno real)
+    // error_log("SYSTEM TEST ERROR: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+} finally {
+    // Cierre seguro de conexión
+    if (isset($db) && $db instanceof Database) {
+        $db->close();
+    }
 }
 
-try {
-	$db = new Database($config);
-	}
-	catch (Exception $e) {
-		$result["error"] = "Error al conectar a la base de datos: " . $e->getMessage();
-	}
-
-	try {
-		$result["db"] = true;
-		$repo = new UrlRepository($db);
-		// Test acceso a la tabla y obtener última URL
-		$last = $repo->getLast();
-		if ($last && isset($last['url'])) {
-		$result["table"] = true;
-		$result["lastUrl"] = $last['url'];
-	} else {
-		throw new Exception("La tabla 'urls' no existe o está vacía.");
-	}
-	$db->close();
-} catch (Exception $e) {
-	$result["error"] = $e->getMessage();
-}
-echo json_encode($result);
+// Codificación segura para JSON
+echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
