@@ -8,5 +8,6 @@ return [
     'DB_HOST' => 'localhost',
     'DB_USER' => 'usuario',
     'DB_PASS' => 'contraseña',
-    'DB_NAME' => 'nombre_bd'
+    'DB_NAME' => 'nombre_bd',
+    'BASE_URL' => 'http://localhost/DataMaq/backend/api/'
 ];
